@@ -23,13 +23,10 @@ package org.jumpmind.metl.core.runtime.component;
 
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -44,10 +41,9 @@ import org.jumpmind.db.sql.SqlException;
 import org.jumpmind.db.sql.SqlTemplateSettings;
 import org.jumpmind.db.sql.UniqueKeyException;
 import org.jumpmind.metl.core.model.ComponentAttribSetting;
-import org.jumpmind.metl.core.model.DataType;
-import org.jumpmind.metl.core.model.RelationalModel;
 import org.jumpmind.metl.core.model.ModelAttrib;
 import org.jumpmind.metl.core.model.ModelEntity;
+import org.jumpmind.metl.core.model.RelationalModel;
 import org.jumpmind.metl.core.runtime.EntityData;
 import org.jumpmind.metl.core.runtime.EntityData.ChangeType;
 import org.jumpmind.metl.core.runtime.EntityDataMessage;
@@ -56,7 +52,6 @@ import org.jumpmind.metl.core.runtime.Message;
 import org.jumpmind.metl.core.runtime.MisconfiguredException;
 import org.jumpmind.metl.core.runtime.flow.ISendMessageCallback;
 import org.jumpmind.metl.core.runtime.resource.IDatasourceRuntime;
-import org.jumpmind.metl.core.util.LogUtils;
 import org.jumpmind.properties.TypedProperties;
 import org.jumpmind.util.FormatUtils;
 
@@ -98,9 +93,13 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
     List<TargetTableDefintion> targetTables;
     Throwable error;
     String lastPreparedDml;
-    Map<TargetTableDefintion, WriteStats> statsMap = new HashMap<>();
-    long lastStatsLogTime = System.currentTimeMillis();
     long sqlDuration = 0;
+
+    /** Handles table metadata resolution and auto-creation. */
+    TargetTablePreparer targetTablePreparer;
+
+    /** Accumulates and periodically reports per-table write statistics. */
+    WriteStatsTracker writeStatsTracker = new WriteStatsTracker();
 
     @Override
     public void start() {
@@ -126,7 +125,7 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         fitToColumn = properties.is(FIT_TO_COLUMN);
         tableSuffix = properties.get(TABLE_SUFFIX, "");
         autoCreateTable = properties.is(AUTO_CREATE_TABLE, false);
-        
+
         if (batchMode && insertFallback) {
             throw new MisconfiguredException("Insert fallback is not supported in batch mode");
         }
@@ -146,9 +145,8 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         if (isBlank(schemaName)) {
             schemaName = null;
         }
-        
-        statsMap = new HashMap<TargetTableDefintion, WriteStats>();
-        lastStatsLogTime = System.currentTimeMillis();
+
+        writeStatsTracker.reset();
     }
 
     @Override
@@ -172,29 +170,14 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
                             quoteIdentifiers, false);
                 }
                 if (targetTables == null) {
+                    targetTablePreparer = new TargetTablePreparer(
+                            databasePlatform, catalogName, schemaName,
+                            tablePrefix, tableSuffix,
+                            autoCreateTable, useCachedMetadata,
+                            this::log);
                     RelationalModel model = (RelationalModel) getInputModel();
-                    targetTables = new ArrayList<TargetTableDefintion>();
-                    for (ModelEntity entity : model.getModelEntities()) {
-                        String tableName = tablePrefix + entity.getName() + tableSuffix;
-                        IDatasourceRuntime resource = (IDatasourceRuntime)getResourceRuntime();
-                        Table table = resource != null ? resource.getTableFromCache(catalogName, schemaName, tableName) : null;
-                        if (table == null || !useCachedMetadata) {
-                            table = databasePlatform.getTableFromCache(catalogName, schemaName, tableName, true);
-                            if (resource != null) {
-                                resource.putTableInCache(catalogName, schemaName, tableName, table);
-                            }
-                        }
-                        if (table == null && autoCreateTable) {
-                            table = createTableFromEntity(entity, tableName);
-                            log(LogLevel.INFO, "Creating table: " + table.getName() + "  on db: " + databasePlatform.getDataSource().toString());
-                            databasePlatform.createTables(false, false, table);
-                        }
-                        if (table != null) {
-                            targetTables.add(new TargetTableDefintion(entity, new TargetTable(DmlType.UPDATE, entity, table.copy()),
-                                    new TargetTable(DmlType.INSERT, entity, table.copy()),
-                                    new TargetTable(DmlType.DELETE, entity, table.copy())));
-                        }
-                    }
+                    IDatasourceRuntime resource = (IDatasourceRuntime) getResourceRuntime();
+                    targetTables = targetTablePreparer.prepareTargetTables(model, resource, getComponent());
                 }
 
                 ArrayList<EntityData> inputRows = ((EntityDataMessage) inputMessage).getPayload();
@@ -228,42 +211,17 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
                     targetTable.getUpdateTable().getRowValues().clear();
                 }
             }
-        } 
+        }
     }
-    
+
     @Override
     public void flowCompleted(boolean cancelled) {
         writeStats(true);
     }
-    
+
     @Override
     public void flowCompletedWithErrors(Throwable myError) {
         writeStats(true);
-    }
-    
-    protected Table createTableFromEntity(ModelEntity entity, String tableName) {
-        Table table = new Table();
-        table.setName(tableName);
-        List<ModelAttrib> attributes = entity.getModelAttributes();
-        for (ModelAttrib attribute : attributes) {
-            DataType dataType = attribute.getDataType();
-            Column column = new Column(attribute.getName());
-            if (dataType.isNumeric()) {
-                column.setTypeCode(Types.DECIMAL);
-            } else if (dataType.isBoolean()) {
-                column.setTypeCode(Types.BOOLEAN);
-            } else if (dataType.isTimestamp()) {
-                column.setTypeCode(Types.TIMESTAMP);
-            } else if (dataType.isBinary()) {
-                column.setTypeCode(Types.BLOB);
-            } else {
-                column.setTypeCode(Types.LONGVARCHAR);
-            }
-
-            column.setPrimaryKey(attribute.isPk());
-            table.addColumn(column);
-        }
-        return table;
     }
 
     private Object[] getValues(boolean isUpdate, TargetTable modelTable, EntityData inputRow) {
@@ -310,7 +268,7 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
                     }
                 }
             } // end each target table option
-            
+
             String entityNameToBeProcessed="Not Found";
             if (!processedRow) {
                 RelationalModel inputModel = (RelationalModel) getInputModel();
@@ -332,20 +290,11 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
 
     private void executeSqlByTableAndOperation(ISqlTransaction transaction) {
         for (TargetTableDefintion targetTableDefinition : targetTables) {
-            WriteStats stats = getStats(targetTableDefinition);
+            WriteStats stats = writeStatsTracker.getStats(targetTableDefinition);
             executeSqlDeletes(targetTableDefinition.getDeleteTable(), transaction, stats);
             executeSqlChanges(targetTableDefinition, transaction, stats);
             executeSqlInserts(targetTableDefinition, transaction, stats);
         }
-    }
-
-    private WriteStats getStats(TargetTableDefintion targetTableDefinition) {
-        WriteStats stats = statsMap.get(targetTableDefinition);
-        if (stats == null) {
-            stats = new WriteStats();
-            statsMap.put(targetTableDefinition, stats);
-        }
-        return stats;
     }
 
     private void executeSqlDeletes(TargetTable targetTable, ISqlTransaction transaction, WriteStats stats) {
@@ -419,74 +368,11 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
     private void write(ISqlTransaction transaction, EntityDataMessage inputMessage, ISendMessageCallback callback, boolean unitOfWorkLastMessage) {
         sortAndStoreRowsByTableAndOperation(inputMessage.getPayload());
         executeSqlByTableAndOperation(transaction);
-        writeStats(false);       
+        writeStats(false);
     }
 
     private void writeStats(boolean force) {
-        if (targetTables != null && (force || System.currentTimeMillis() - lastStatsLogTime > 5 * 60 * 1000)) {
-            int rowCount = 0;
-            for (TargetTableDefintion table : targetTables) {
-                WriteStats stats = statsMap.get(table);
-                if (stats != null) {
-                    StringBuilder msg = new StringBuilder();
-                    if (stats.insertCount > 0) {
-                        msg.append("Inserted: ");
-                        msg.append(stats.insertCount);
-                        rowCount += stats.insertCount;
-                    }
-                    if (stats.fallbackUpdateCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Fallback Updates: ");
-                        msg.append(stats.fallbackUpdateCount);
-                        rowCount += stats.fallbackUpdateCount * 2;
-                    }
-                    if (stats.updateCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Updated: ");
-                        msg.append(stats.updateCount);
-                        rowCount += stats.updateCount;
-                    }
-                    if (stats.deleteCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Deleted: ");
-                        msg.append(stats.deleteCount);
-                        rowCount += stats.deleteCount;
-                    }
-                    if (stats.fallbackInsertCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Fallback Inserts: ");
-                        msg.append(stats.fallbackInsertCount);
-                        rowCount += stats.fallbackInsertCount * 2;
-                    }
-                    if (stats.ignoredCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Ignored Count: ");
-                        msg.append(stats.ignoredCount);
-                        rowCount += stats.ignoredCount;
-                    }
-                    if (msg.length() > 0) {
-                        log(LogLevel.INFO, "%s: %s",
-                                table.getInsertTable().getTable().getFullyQualifiedTableName(),
-                                msg.toString());
-                    }
-                }
-            }
-            info("Ran a total of %d statements in %s", rowCount,
-                    LogUtils.formatDuration(sqlDuration));
-            sqlDuration = 0;
-            statsMap.clear();
-            lastStatsLogTime = System.currentTimeMillis();
-        }
+        sqlDuration = writeStatsTracker.reportStats(targetTables, force, sqlDuration, this::log);
     }
 
     private int execute(ISqlTransaction transaction, DmlStatement dmlStatement, Object marker, Object[] data) {
@@ -585,12 +471,16 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
     public void setContinueOnError(boolean continueOnError) {
         this.continueOnError = continueOnError;
     }
-    
+
     public Throwable getError() {
         return error;
     }
 
-    class TargetTableDefintion implements Comparable<TargetTableDefintion> {
+    // ---------------------------------------------------------------
+    // Inner data classes -- all static with explicit dependencies
+    // ---------------------------------------------------------------
+
+    static class TargetTableDefintion implements Comparable<TargetTableDefintion> {
         ModelEntity modelEntity;
         TargetTable updateTable;
         TargetTable insertTable;
@@ -645,21 +535,27 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
 
     }
 
-    class TargetTable {
+    static class TargetTable {
         Table table;
         DmlStatement statement;
         List<TargetColumn> keyTargetColumns = new ArrayList<TargetColumn>();
         List<TargetColumn> targetColumns = new ArrayList<TargetColumn>();
         List<EntityData> rowValues = new ArrayList<EntityData>();
 
-        public TargetTable(DmlType dmlType, ModelEntity entity, Table table) {
+        /** Test-only constructor that bypasses normal DML/column initialisation. */
+        TargetTable(Table table) {
+            this.table = table;
+        }
+
+        public TargetTable(DmlType dmlType, ModelEntity entity, Table table, IDatabasePlatform databasePlatform,
+                           org.jumpmind.metl.core.model.Component component) {
             this.table = table;
             List<ModelAttrib> attributes = entity.getModelAttributes();
             String[] columnNames = table.getColumnNames();
             /*
-             * 
+             *
              * Remove columns that don't exist in the model
-             * 
+             *
              */
             for (String columnName : columnNames) {
                 boolean foundIt = false;
@@ -675,12 +571,12 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
             }
             if (dmlType == DmlType.INSERT || dmlType == DmlType.UPDATE) {
                 /*
-                 * 
+                 *
                  * Remove columns that are not enabled for this dml type
-                 * 
+                 *
                  */
                 for (ModelAttrib attribute : attributes) {
-                    ComponentAttribSetting setting = getComponent().getSingleAttributeSetting(attribute.getId(),
+                    ComponentAttribSetting setting = component.getSingleAttributeSetting(attribute.getId(),
                             dmlType == DmlType.INSERT ? ATTRIBUTE_INSERT_ENABLED : ATTRIBUTE_UPDATE_ENABLED);
                     if (setting != null && !Boolean.parseBoolean(setting.getValue())) {
                         table.removeColumn(table.findColumn(attribute.getName()));
@@ -692,9 +588,9 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
                 ModelAttrib attr = entity.getModelAttributeByName(column.getName());
                 if (attr != null) {
                     if (column.isPrimaryKey()) {
-                        keyTargetColumns.add(new TargetColumn(attr, column));
+                        keyTargetColumns.add(new TargetColumn(attr, column, component));
                     }
-                    targetColumns.add(new TargetColumn(attr, column));
+                    targetColumns.add(new TargetColumn(attr, column, component));
                 }
             }
         }
@@ -733,18 +629,18 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         }
     }
 
-    class TargetColumn {
+    static class TargetColumn {
         ModelAttrib modelAttribute;
         Column column;
         boolean insertEnabled = true;
         boolean updateEnabled = true;
 
-        TargetColumn(ModelAttrib modelAttribute, Column column) {
+        TargetColumn(ModelAttrib modelAttribute, Column column, org.jumpmind.metl.core.model.Component component) {
             this.modelAttribute = modelAttribute;
             this.column = column;
-            ComponentAttribSetting insertAttr = getComponent().getSingleAttributeSetting(modelAttribute.getId(), ATTRIBUTE_INSERT_ENABLED);
+            ComponentAttribSetting insertAttr = component.getSingleAttributeSetting(modelAttribute.getId(), ATTRIBUTE_INSERT_ENABLED);
             insertEnabled = insertAttr != null ? Boolean.parseBoolean(insertAttr.getValue()) : true;
-            ComponentAttribSetting updateAttr = getComponent().getSingleAttributeSetting(modelAttribute.getId(), ATTRIBUTE_UPDATE_ENABLED);
+            ComponentAttribSetting updateAttr = component.getSingleAttributeSetting(modelAttribute.getId(), ATTRIBUTE_UPDATE_ENABLED);
             updateEnabled = updateAttr != null ? Boolean.parseBoolean(updateAttr.getValue()) : true;
         }
 
@@ -765,7 +661,7 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         }
     }
 
-    class WriteStats {
+    static class WriteStats {
         int ignoredCount;
         int insertCount;
         int deleteCount;

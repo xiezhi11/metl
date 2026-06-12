@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew.bat :comp-rdbms-writer:compileJava)",
+      "Bash(java -version)",
+      "Bash(where java:*)",
+      "Bash(echo $JAVA_HOME)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:compileJava)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:compileJava --offline)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-abstract:compileJava)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:compileJava :comp-rdbms-writer:compileTestJava)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:compileTestJava)",
+      "Bash(jar tf:*)",
+      "Bash(cd /tmp)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" javap -p -classpath \"/c/Users/Administrator/.gradle/caches/modules-2/files-2.1/org.jumpmind.symmetric/symmetric-db/3.15.18.1/21f77aed0a8859596f8e8142a376b68c7615c8b3/symmetric-db-3.15.18.1.jar\" org.jumpmind.db.model.Column)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" javap -p -classpath \"/c/Users/Administrator/.gradle/caches/modules-2/files-2.1/org.jumpmind.symmetric/symmetric-db/3.15.18.1/21f77aed0a8859596f8e8142a376b68c7615c8b3/symmetric-db-3.15.18.1.jar\" org.jumpmind.db.model.Table)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:test)",
+      "Bash(find D:/BaiduNetdiskDownload/dockerTools/tools/ali/repo-1/qwen/comp-rdbms-writer/build -name *WriteStats*)",
+      "Bash(find D:/BaiduNetdiskDownload/dockerTools/tools/ali/repo-1/qwen/comp-rdbms-writer/build -name *.xml)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:test --rerun-tasks)",
+      "Bash(grep:*)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot\" ./gradlew.bat :comp-rdbms-writer:build)"
+    ]
+  }
+}

@@ -3,5 +3,6 @@ apply from: '../metl-assemble/common.gradle'
 dependencies {
     compileOnly project(':metl-ui')   
     api project(':comp-abstract')
-    testImplementation project(path: ':metl-core', configuration: 'testArtifacts')     
+    testImplementation project(':metl-core')
+    testImplementation project(path: ':metl-core', configuration: 'testArtifacts')
 }
