@@ -172,29 +172,7 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
                             quoteIdentifiers, false);
                 }
                 if (targetTables == null) {
-                    RelationalModel model = (RelationalModel) getInputModel();
-                    targetTables = new ArrayList<TargetTableDefintion>();
-                    for (ModelEntity entity : model.getModelEntities()) {
-                        String tableName = tablePrefix + entity.getName() + tableSuffix;
-                        IDatasourceRuntime resource = (IDatasourceRuntime)getResourceRuntime();
-                        Table table = resource != null ? resource.getTableFromCache(catalogName, schemaName, tableName) : null;
-                        if (table == null || !useCachedMetadata) {
-                            table = databasePlatform.getTableFromCache(catalogName, schemaName, tableName, true);
-                            if (resource != null) {
-                                resource.putTableInCache(catalogName, schemaName, tableName, table);
-                            }
-                        }
-                        if (table == null && autoCreateTable) {
-                            table = createTableFromEntity(entity, tableName);
-                            log(LogLevel.INFO, "Creating table: " + table.getName() + "  on db: " + databasePlatform.getDataSource().toString());
-                            databasePlatform.createTables(false, false, table);
-                        }
-                        if (table != null) {
-                            targetTables.add(new TargetTableDefintion(entity, new TargetTable(DmlType.UPDATE, entity, table.copy()),
-                                    new TargetTable(DmlType.INSERT, entity, table.copy()),
-                                    new TargetTable(DmlType.DELETE, entity, table.copy())));
-                        }
-                    }
+                    prepareTargetTables();
                 }
 
                 ArrayList<EntityData> inputRows = ((EntityDataMessage) inputMessage).getPayload();
@@ -241,6 +219,37 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         writeStats(true);
     }
     
+    protected void prepareTargetTables() {
+        RelationalModel model = (RelationalModel) getInputModel();
+        targetTables = new ArrayList<TargetTableDefintion>();
+        for (ModelEntity entity : model.getModelEntities()) {
+            String tableName = tablePrefix + entity.getName() + tableSuffix;
+            Table table = resolveTargetTable(entity, tableName);
+            if (table != null) {
+                targetTables.add(new TargetTableDefintion(entity, new TargetTable(DmlType.UPDATE, entity, table.copy()),
+                        new TargetTable(DmlType.INSERT, entity, table.copy()),
+                        new TargetTable(DmlType.DELETE, entity, table.copy())));
+            }
+        }
+    }
+
+    protected Table resolveTargetTable(ModelEntity entity, String tableName) {
+        IDatasourceRuntime resource = (IDatasourceRuntime) getResourceRuntime();
+        Table table = resource != null ? resource.getTableFromCache(catalogName, schemaName, tableName) : null;
+        if (table == null || !useCachedMetadata) {
+            table = databasePlatform.getTableFromCache(catalogName, schemaName, tableName, true);
+            if (resource != null) {
+                resource.putTableInCache(catalogName, schemaName, tableName, table);
+            }
+        }
+        if (table == null && autoCreateTable) {
+            table = createTableFromEntity(entity, tableName);
+            log(LogLevel.INFO, "Creating table: " + table.getName() + "  on db: " + databasePlatform.getDataSource().toString());
+            databasePlatform.createTables(false, false, table);
+        }
+        return table;
+    }
+
     protected Table createTableFromEntity(ModelEntity entity, String tableName) {
         Table table = new Table();
         table.setName(tableName);
@@ -427,58 +436,11 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
             int rowCount = 0;
             for (TargetTableDefintion table : targetTables) {
                 WriteStats stats = statsMap.get(table);
-                if (stats != null) {
-                    StringBuilder msg = new StringBuilder();
-                    if (stats.insertCount > 0) {
-                        msg.append("Inserted: ");
-                        msg.append(stats.insertCount);
-                        rowCount += stats.insertCount;
-                    }
-                    if (stats.fallbackUpdateCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Fallback Updates: ");
-                        msg.append(stats.fallbackUpdateCount);
-                        rowCount += stats.fallbackUpdateCount * 2;
-                    }
-                    if (stats.updateCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Updated: ");
-                        msg.append(stats.updateCount);
-                        rowCount += stats.updateCount;
-                    }
-                    if (stats.deleteCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Deleted: ");
-                        msg.append(stats.deleteCount);
-                        rowCount += stats.deleteCount;
-                    }
-                    if (stats.fallbackInsertCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Fallback Inserts: ");
-                        msg.append(stats.fallbackInsertCount);
-                        rowCount += stats.fallbackInsertCount * 2;
-                    }
-                    if (stats.ignoredCount > 0) {
-                        if (msg.length() > 0) {
-                            msg.append(", ");
-                        }
-                        msg.append("Ignored Count: ");
-                        msg.append(stats.ignoredCount);
-                        rowCount += stats.ignoredCount;
-                    }
-                    if (msg.length() > 0) {
-                        log(LogLevel.INFO, "%s: %s",
-                                table.getInsertTable().getTable().getFullyQualifiedTableName(),
-                                msg.toString());
-                    }
+                if (stats != null && stats.hasActivity()) {
+                    rowCount += stats.weightedRowCount();
+                    log(LogLevel.INFO, "%s: %s",
+                            table.getInsertTable().getTable().getFullyQualifiedTableName(),
+                            stats.describe());
                 }
             }
             info("Ran a total of %d statements in %s", rowCount,
@@ -765,12 +727,42 @@ public class RdbmsWriter extends AbstractRdbmsComponentRuntime {
         }
     }
 
-    class WriteStats {
+    static class WriteStats {
         int ignoredCount;
         int insertCount;
         int deleteCount;
         int updateCount;
         int fallbackInsertCount;
         int fallbackUpdateCount;
+
+        boolean hasActivity() {
+            return insertCount > 0 || fallbackUpdateCount > 0 || updateCount > 0
+                    || deleteCount > 0 || fallbackInsertCount > 0 || ignoredCount > 0;
+        }
+
+        int weightedRowCount() {
+            return insertCount + (fallbackUpdateCount * 2) + updateCount + deleteCount
+                    + (fallbackInsertCount * 2) + ignoredCount;
+        }
+
+        String describe() {
+            StringBuilder msg = new StringBuilder();
+            append(msg, "Inserted: ", insertCount);
+            append(msg, "Fallback Updates: ", fallbackUpdateCount);
+            append(msg, "Updated: ", updateCount);
+            append(msg, "Deleted: ", deleteCount);
+            append(msg, "Fallback Inserts: ", fallbackInsertCount);
+            append(msg, "Ignored Count: ", ignoredCount);
+            return msg.toString();
+        }
+
+        private static void append(StringBuilder msg, String label, int count) {
+            if (count > 0) {
+                if (msg.length() > 0) {
+                    msg.append(", ");
+                }
+                msg.append(label).append(count);
+            }
+        }
     }
 }
