@@ -1,0 +1,8 @@
+apply from: '../metl-assemble/common.gradle'
+
+dependencies {
+    compileOnly project(':metl-ui')   
+    compileOnly project(':metl-core')
+    api project(':comp-abstract')
+    testImplementation project(path: ':metl-core', configuration: 'testArtifacts')     
+}

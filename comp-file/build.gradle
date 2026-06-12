@@ -1,0 +1,15 @@
+apply from: '../metl-assemble/common.gradle'
+
+dependencies {
+    compileOnly project(':metl-ui')   
+    api project(':comp-abstract')
+}
+
+sourceSets {
+    String sharedTestMetlDir = project(':metl-core').file("src/test/java")
+    String sharedTestResourceDir = project(':resource-core').file("src/test/java")
+    test {
+        java.srcDir sharedTestMetlDir
+        java.srcDir sharedTestResourceDir
+    }
+}

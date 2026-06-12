@@ -1,0 +1,17 @@
+/bin/
+/working/
+/.settings/
+/.classpath
+/.project
+/*.iml
+/build/
+/.DS_Store
+/target/
+/working-save/
+/working20170213/
+/node_modules/
+/frontend/generated/
+/webpack.generated.js
+/vite.generated.ts
+/types.d.ts
+/tsconfig.json

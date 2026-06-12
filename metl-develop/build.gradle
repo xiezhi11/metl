@@ -1,0 +1,53 @@
+apply from: '../metl-assemble/common.gradle'
+
+dependencies {
+    api project(":metl-server")
+    api (project(":metl-ui")) {
+       exclude group:'org.eclipse.jetty'
+       exclude group:'jakarta.websocket'
+       exclude group:'jakarta.servlet.jsp'
+       exclude group:'jakarta.servlet'
+    }
+    api project(":metl-core")
+    testImplementation project(":resource-core")
+    testImplementation project(":comp-rdbms-reader")  
+    testImplementation project(":comp-data-diff")  
+    testImplementation project(":comp-sorter")  
+    testImplementation project(":comp-temp-rdbms")
+    testImplementation project(":comp-serialize")
+    testImplementation project(":comp-sql-execute")
+    testImplementation project(":comp-rdbms-writer")
+    testImplementation project(":comp-sequence")    
+    testImplementation project(":comp-service")
+    testImplementation project(":comp-zip")
+    testImplementation project(":comp-file")
+    testImplementation project(":comp-excel")
+    testImplementation project(":comp-control") 
+    testImplementation project(":comp-groovy")  
+    testImplementation project(":comp-route")  
+    testImplementation project(":comp-map")
+    testImplementation project(":comp-transform")
+    testImplementation project(":comp-xml") 
+    testImplementation project(":comp-json") 
+    testImplementation project(":comp-format")
+    testImplementation project(":comp-email")
+    testImplementation project(":comp-execute")
+    testImplementation project(":comp-webrequest") 
+    testImplementation project(":comp-test") 
+    testImplementation project(":comp-text")      
+    testImplementation project(":comp-stamp")      
+    testImplementation project(":comp-subscribe")   
+    testImplementation project(":comp-pgp")   
+	testImplementation project(":comp-kafka")
+	testImplementation project(":comp-sqs")
+	testImplementation project(":comp-paged-web-reader")
+    testImplementation project(path: ':metl-core', configuration: 'testArtifacts')    
+    testImplementation "jakarta.servlet:jakarta.servlet-api:$servletVersion"
+    testImplementation "org.eclipse.jetty.ee10:jetty-ee10-servlet:$jettyVersion"
+    testImplementation "jakarta.servlet.jsp:jakarta.servlet.jsp-api:$jspVersion"
+    testImplementation "jakarta.websocket:jakarta.websocket-api:$webSocketVersion"        
+    testImplementation "org.eclipse.jetty.ee10:jetty-ee10-webapp:$jettyVersion"
+    testImplementation "org.eclipse.jetty:jetty-jmx:$jettyVersion"
+    testImplementation "org.eclipse.jetty.ee10:jetty-ee10-annotations:$jettyVersion"
+    testImplementation "org.eclipse.jetty.ee10.websocket:jetty-ee10-websocket-jakarta-server:$jettyVersion"
+}

@@ -1,0 +1,973 @@
+/**
+ * Licensed to JumpMind Inc under one or more contributor
+ * license agreements.  See the NOTICE file distributed
+ * with this work for additional information regarding
+ * copyright ownership.  JumpMind Inc licenses this file
+ * to you under the GNU General Public License, version 3.0 (GPLv3)
+ * (the "License"); you may not use this file except in compliance
+ * with the License.
+ *
+ * You should have received a copy of the GNU General Public License,
+ * version 3.0 (GPLv3) along with this library; if not, see
+ * <http://www.gnu.org/licenses/>.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+package org.jumpmind.metl.ui.views.design;
+
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
+import static org.jumpmind.metl.core.runtime.component.ComponentSettingsConstants.ENABLED;
+import static org.jumpmind.metl.core.runtime.component.ComponentSettingsConstants.LOG_INPUT;
+import static org.jumpmind.metl.core.runtime.component.ComponentSettingsConstants.LOG_OUTPUT;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.commons.lang3.exception.ExceptionUtils;
+import org.jumpmind.metl.core.model.AbstractName;
+import org.jumpmind.metl.core.model.AbstractObject;
+import org.jumpmind.metl.core.model.AbstractObjectNameBasedSorter;
+import org.jumpmind.metl.core.model.AbstractObjectWithSettings;
+import org.jumpmind.metl.core.model.Component;
+import org.jumpmind.metl.core.model.Flow;
+import org.jumpmind.metl.core.model.FlowName;
+import org.jumpmind.metl.core.model.FlowStep;
+import org.jumpmind.metl.core.model.FlowStepLink;
+import org.jumpmind.metl.core.model.ModelAttrib;
+import org.jumpmind.metl.core.model.ModelEntity;
+import org.jumpmind.metl.core.model.Privilege;
+import org.jumpmind.metl.core.model.ProjectVersionDepends;
+import org.jumpmind.metl.core.model.RelationalModel;
+import org.jumpmind.metl.core.model.Resource;
+import org.jumpmind.metl.core.model.Setting;
+import org.jumpmind.metl.core.persist.IConfigurationService;
+import org.jumpmind.metl.core.plugin.XMLComponentDefinition;
+import org.jumpmind.metl.core.plugin.XMLComponentDefinition.MessageType;
+import org.jumpmind.metl.core.plugin.XMLComponentDefinition.ResourceCategory;
+import org.jumpmind.metl.core.plugin.XMLResourceDefinition;
+import org.jumpmind.metl.core.plugin.XMLSetting;
+import org.jumpmind.metl.core.plugin.XMLSetting.Type;
+import org.jumpmind.metl.core.runtime.AgentRuntime;
+import org.jumpmind.metl.core.runtime.component.ComponentSettingsConstants;
+import org.jumpmind.metl.core.runtime.flow.StepRuntime;
+import org.jumpmind.metl.core.runtime.resource.IResourceRuntime;
+import org.jumpmind.metl.ui.common.ApplicationContext;
+import org.jumpmind.metl.ui.common.ButtonBar;
+import org.jumpmind.metl.ui.common.Icons;
+import org.jumpmind.metl.ui.common.ImmediateUpdateTogglePasswordField;
+import org.jumpmind.metl.ui.common.TabbedPanel;
+import org.jumpmind.properties.TypedProperties;
+import org.jumpmind.vaadin.ui.common.CommonUiUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.vaadin.flow.component.ComponentEventListener;
+import com.vaadin.flow.component.HasValue;
+import com.vaadin.flow.component.HasValue.ValueChangeEvent;
+import com.vaadin.flow.component.HasValue.ValueChangeListener;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.formlayout.FormLayout;
+import com.vaadin.flow.component.formlayout.FormLayout.ResponsiveStep;
+import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
+import com.vaadin.flow.component.textfield.TextArea;
+import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.data.binder.Binder;
+import com.vaadin.flow.data.converter.StringToIntegerConverter;
+import com.vaadin.flow.data.value.ValueChangeMode;
+
+import de.f0rce.ace.AceEditor;
+import de.f0rce.ace.enums.AceMode;
+import de.f0rce.ace.events.AceValueChanged;
+
+@SuppressWarnings("serial")
+public class PropertySheet extends Div {
+
+    protected final Logger log = LoggerFactory.getLogger(getClass());
+
+    protected static final String DUMMY_PASSWORD = "*****";
+
+    ApplicationContext context;
+
+    IPropertySheetChangeListener listener;
+
+    Object value;
+
+    VerticalLayout panel;
+
+    TabbedPanel tabs;
+
+    boolean readOnly;
+
+    public PropertySheet(ApplicationContext context, TabbedPanel tabs, boolean readOnly) {
+        this.tabs = tabs;
+        this.context = context;
+        this.readOnly = readOnly;
+
+        setSizeFull();
+
+        panel = new VerticalLayout();
+        panel.setSizeFull();
+        add(panel);
+    }
+
+    public void setListener(IPropertySheetChangeListener listener) {
+        this.listener = listener;
+    }
+
+    public Object getValue() {
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    public void setSource(Object obj) {
+        value = obj;
+        VerticalLayout vLayout = new VerticalLayout();
+        vLayout.setPadding(false);
+        vLayout.setSpacing(false);
+        FormLayout formLayout = new FormLayout();
+        formLayout.setWidthFull();
+        formLayout.setResponsiveSteps(new ResponsiveStep("0", 1));
+        formLayout.addClassName("side-aligned-labels");
+
+        if (obj != null) {
+
+            if (obj instanceof List<?>) {
+                List<Object> l = (List<Object>) obj;
+                if (l.size() == 1) {
+                    if (l.get(0) instanceof FlowStep) {
+                        obj = (FlowStep) l.get(0);
+                    }
+                }
+            }
+
+            if (obj instanceof FlowStep) {
+                obj = ((FlowStep) obj).getComponent();
+            }
+
+            if (obj instanceof Component) {
+                Component component = (Component) obj;
+                context.getConfigurationService().refresh(component, true);
+                addComponentProperties(formLayout, component);
+            }
+
+            if (obj instanceof Resource) {
+                Resource resource = (Resource) obj;
+                addButtonBar(vLayout, resource);
+                addResourceProperties(formLayout, resource);
+            }
+
+            if (obj instanceof AbstractObjectWithSettings) {
+                List<XMLSetting> settings = buildSettings(obj);
+                if (settings != null) {
+                    for (XMLSetting definition : settings) {
+                        addSettingField(definition, (AbstractObjectWithSettings) obj, formLayout);
+                    }
+                }
+            }
+
+            if (obj instanceof Component) {
+                Component component = (Component) obj;
+                XMLComponentDefinition componentDefintion = context.getDefinitionFactory()
+                        .getComponentDefinition(component.getProjectVersionId(), component.getType());
+                addThreadCount(componentDefintion, formLayout, component);
+            }
+
+            if (obj instanceof List<?>) {
+                addCommonComponentSettings(formLayout, obj);
+            }
+
+        }
+        vLayout.add(formLayout);
+        panel.removeAll();
+        panel.add(vLayout);
+    }
+    
+    private void addButtonBar(VerticalLayout layout, Resource resource) {
+        ButtonBar buttonBar = new ButtonBar();
+        Button testBtn = buttonBar.addButton("Test", Icons.RUN);
+        testBtn.addClickListener((event)->testResource(resource));
+        String resourceType = resource.getType();
+        testBtn.setEnabled("Database".equals(resourceType) || "Ftp".equals(resourceType) || "Http".equals(resourceType)
+                || "AWS S3".equals(resourceType));
+        layout.add(buttonBar);
+    }
+    
+    private void testResource(Resource resource) {
+        try {
+            createResourceRuntime(resource).test();
+            CommonUiUtils.notify("Test Successful");
+        } catch (Exception ex) {
+            Throwable rootCause = ExceptionUtils.getRootCause(ex);
+            if (rootCause == null) {
+                rootCause = ex;
+            }
+            CommonUiUtils.notifyError("Resource test failed. Root Cause: " + rootCause.getMessage());
+        }
+    }
+    
+    private IResourceRuntime createResourceRuntime(Resource resource) {
+        XMLResourceDefinition definition = 
+                context.getDefinitionFactory().getResourceDefintion(resource.getProjectVersionId(), resource.getType());
+        TypedProperties properties = resource.toTypedProperties(definition.getSettings().getSetting());
+        return AgentRuntime.create(definition, resource, properties);
+    }
+    
+    @SuppressWarnings("unchecked")
+    protected void addCommonComponentSettings(FormLayout formLayout, Object obj) {
+        List<Object> list = (List<Object>) obj;
+        List<Component> components = new ArrayList<Component>(list.size());
+        for (Object object : list) {
+            if (object instanceof FlowStep) {
+                components.add(((FlowStep) object).getComponent());
+            } else if (object instanceof Component) {
+                components.add((Component) object);
+            }
+        }
+        if (components.size() != 0 && !readOnly) {
+            formLayout.addFormItem(buildRadioButtonGroup(ENABLED, components), "Enabled");
+            formLayout.addFormItem(buildRadioButtonGroup(LOG_INPUT, components), "Log Input");
+            formLayout.addFormItem(buildRadioButtonGroup(LOG_OUTPUT, components), "Log Output");
+        }
+    }
+
+    protected RadioButtonGroup<String> buildRadioButtonGroup(String name, List<Component> components) {
+        RadioButtonGroup<String> optionGroup = new RadioButtonGroup<String>();
+        optionGroup.setItems("ON", "OFF");
+        optionGroup.addValueChangeListener((event) -> saveSetting(name, optionGroup, components));
+        return optionGroup;
+    }
+
+    protected void saveSetting(String name, HasValue<?, String> field, List<Component> components) {
+        for (final Component component : components) {
+            saveSetting(name, field.getValue() != null ? Boolean.valueOf(field.getValue().equals("ON")).toString() : null, component);
+        }
+        if (listener != null) {
+            listener.componentChanged(components);
+        }
+    }
+
+    protected void addResourceProperties(FormLayout formLayout, Resource resource) {
+        TextField textField = new TextField();
+        textField.setWidthFull();
+        textField.setValue(resource.getType());
+        textField.setReadOnly(true);
+        formLayout.addFormItem(textField, "Resource Type");
+    }
+
+    protected void addComponentProperties(FormLayout formLayout, Component component) {
+        XMLComponentDefinition componentDefintion = context.getDefinitionFactory().getComponentDefinition(component.getProjectVersionId(),
+                component.getType());
+        addComponentName(formLayout, component);
+        TextField textField = new TextField();
+        textField.setWidthFull();
+        textField.setValue(componentDefintion.getName());
+        textField.setReadOnly(true);
+        formLayout.addFormItem(textField, "Component Type");
+        addResourceCombo(componentDefintion, formLayout, component);
+        addInputModelCombo(componentDefintion, formLayout, component);
+        addOutputModelCombo(componentDefintion, formLayout, component);
+        addErrorHandlerCombo(componentDefintion, formLayout, component);
+    }
+
+    protected void addThreadCount(XMLComponentDefinition componentDefintion, FormLayout formLayout, final Component component) {
+        if (componentDefintion.isSupportsMultipleThreads()) {
+            XMLSetting setting = new XMLSetting(StepRuntime.THREAD_COUNT, "Thread Count", "1", Type.INTEGER, true);
+            addSettingField(setting, component, formLayout);
+        }
+    }
+
+    protected void addErrorHandlerCombo(XMLComponentDefinition componentDefinition, FormLayout formLayout, final Component component) {
+        FlowStep step = getSingleFlowStep();
+        if (step != null) {
+            final ComboBox<FlowStep> combo = new ComboBox<FlowStep>();
+            combo.setWidthFull();
+            IConfigurationService configurationService = context.getConfigurationService();
+            Flow flow = configurationService.findFlow(step.getFlowId());
+            String currentErrorHandlerId = component.get(ComponentSettingsConstants.ERROR_HANDLER);
+            FlowStep currentValue = null;
+            List<FlowStep> comboStepList = new ArrayList<FlowStep>();
+            List<FlowStepLink> stepLinks = flow.findFlowStepLinksWithSource(step.getId());
+            for (FlowStepLink flowStepLink : stepLinks) {
+                FlowStep comboStep = flow.findFlowStepWithId(flowStepLink.getTargetStepId());
+                comboStepList.add(comboStep);
+                if (currentValue == null && currentErrorHandlerId != null && currentErrorHandlerId.equals(comboStep.getId())) {
+                	currentValue = comboStep;
+                }
+            }
+            combo.setItems(comboStepList);
+            combo.setItemLabelGenerator(item -> item.getName());
+            if (currentValue != null) {
+                combo.setValue(currentValue);
+            }            
+            combo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<FlowStep>>() {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                public void valueChanged(ValueChangeEvent<FlowStep> event) {
+                    Setting setting = step.getComponent().findSetting(ComponentSettingsConstants.ERROR_HANDLER);
+                    FlowStep value = event.getValue();
+                    setting.setValue(value != null ? value.getId() : null);
+                    context.getConfigurationService().save(setting);
+                }
+            });
+            combo.setReadOnly(readOnly);
+            formLayout.addFormItem(combo, "Error Suspense Step");
+        }
+    }
+
+    
+    protected void addOutputModelCombo(XMLComponentDefinition componentDefinition, FormLayout formLayout, final Component component) {
+        FlowStep step = getSingleFlowStep();
+        if (step != null) {
+            IConfigurationService configurationService = context.getConfigurationService();
+            String projectVersionId = step.getComponent().getProjectVersionId();
+            if ((
+            		(componentDefinition.getOutputMessageType() == MessageType.RELATIONAL 
+	            		|| componentDefinition.getOutputMessageType() == MessageType.HIERARCHICAL 
+	            		|| componentDefinition.getOutputMessageType() == MessageType.MODEL)
+	                    	|| (componentDefinition.getOutputMessageType() == MessageType.ANY && componentDefinition.isShowOutputModel()))
+                    && !componentDefinition.isInputOutputModelsMatch()) {
+                final ComboBox<AbstractName> combo = new ComboBox<AbstractName>();
+                combo.setWidthFull();
+                
+                List<AbstractName> models = new ArrayList<AbstractName>();
+                if (componentDefinition.getOutputMessageType() == MessageType.ANY
+                		|| componentDefinition.getOutputMessageType() == MessageType.MODEL
+                		||	componentDefinition.getOutputMessageType() == MessageType.RELATIONAL) {
+                    models.addAll(configurationService.findRelationalModelsInProject(projectVersionId));
+                }
+                if (componentDefinition.getOutputMessageType() == MessageType.ANY
+                		|| componentDefinition.getOutputMessageType() == MessageType.MODEL
+                		|| componentDefinition.getOutputMessageType() == MessageType.HIERARCHICAL) { 
+                    models.addAll(configurationService.findHierarchicalModelsInProject(projectVersionId));
+                }
+                
+                List<ProjectVersionDepends> dependencies = configurationService.findProjectDependencies(projectVersionId);
+                for (ProjectVersionDepends projectVersionDependency : dependencies) {
+                    if (componentDefinition.getOutputMessageType() == MessageType.ANY
+                    		|| componentDefinition.getOutputMessageType() == MessageType.MODEL
+                    		|| componentDefinition.getOutputMessageType() == MessageType.RELATIONAL) {
+                        models.addAll(configurationService.findRelationalModelsInProject(projectVersionDependency.getTargetProjectVersionId()));
+                    }
+                    if (componentDefinition.getOutputMessageType() == MessageType.ANY
+                    		|| componentDefinition.getOutputMessageType() == MessageType.MODEL
+                    		|| componentDefinition.getOutputMessageType() == MessageType.HIERARCHICAL) { 
+                        models.addAll(configurationService.findHierarchicalModelsInProject(projectVersionDependency.getTargetProjectVersionId()));
+                    }
+                }
+
+                if (models != null) {
+                	combo.setItems(models);
+                    for (AbstractName model : models) {
+                        if (isNotBlank(component.getOutputModelId()) && component.getOutputModelId().equals(model.getId())) {
+                            combo.setValue(model);
+                        }
+                    }
+                }
+                combo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<AbstractName>>() {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public void valueChanged(ValueChangeEvent<AbstractName> event) {
+                        AbstractName model = combo.getValue();
+                        if (model != null) {
+	                        component.setOutputModelId(model.getId());
+	                        component.setOutputModel(configurationService.findModel(model.getId()));
+                        } else {
+	                        component.setOutputModelId(null);
+	                        component.setOutputModel(null);
+                        }
+                        configurationService.save((AbstractObject) component);
+                        setSource(value);
+                    }
+                });
+                combo.setReadOnly(readOnly);
+                formLayout.addFormItem(combo, "Output Model");
+            }
+        }
+    }
+
+    protected void addComponentName(FormLayout formLayout, final Component component) {
+
+        TextField textField = new TextField();
+        textField.setWidthFull();
+        textField.setValueChangeMode(ValueChangeMode.LAZY);
+        textField.setValueChangeTimeout(200);
+        textField.setValue(component.getName());
+        textField.addValueChangeListener(event -> {
+            component.setName(event.getValue());
+            context.getConfigurationService().save(component);
+            if (listener != null) {
+                List<Component> components = new ArrayList<Component>(1);
+                components.add(component);
+                listener.componentChanged(components);
+            }
+        });
+        textField.setRequiredIndicatorVisible(true);
+        textField.getElement().setProperty("title", "Name for the component on the flow");
+        formLayout.addFormItem(textField, "Component Name");
+    }
+
+    protected void addInputModelCombo(XMLComponentDefinition componentDefinition, FormLayout formLayout, final Component component) {
+        FlowStep step = getSingleFlowStep();
+        if (step != null) {
+            IConfigurationService configurationService = context.getConfigurationService();
+            String projectVersionId = step.getComponent().getProjectVersionId();
+            if ((componentDefinition.getInputMessageType() == MessageType.RELATIONAL 
+            		|| componentDefinition.getInputMessageType() == MessageType.HIERARCHICAL 
+            		|| componentDefinition.getInputMessageType() == MessageType.MODEL)
+                    || (componentDefinition.getInputMessageType() == MessageType.ANY && componentDefinition.isShowInputModel())) {
+                final ComboBox<AbstractName> combo = new ComboBox<AbstractName>();      
+                combo.setWidthFull();
+
+                List<AbstractName> models = new ArrayList<AbstractName>();
+                if (componentDefinition.getInputMessageType() == MessageType.ANY
+                		|| componentDefinition.getInputMessageType() == MessageType.MODEL
+                		|| componentDefinition.getInputMessageType() == MessageType.RELATIONAL) {
+                    models.addAll(configurationService.findRelationalModelsInProject(projectVersionId));
+                } 
+                if (componentDefinition.getInputMessageType() == MessageType.ANY
+                		|| componentDefinition.getInputMessageType() == MessageType.MODEL
+                		|| componentDefinition.getInputMessageType() == MessageType.HIERARCHICAL ) { 
+                    models.addAll(configurationService.findHierarchicalModelsInProject(projectVersionId));
+                }
+                
+                List<ProjectVersionDepends> dependencies = configurationService.findProjectDependencies(projectVersionId);
+                for (ProjectVersionDepends projectVersionDependency : dependencies) {
+                    if (componentDefinition.getInputMessageType() == MessageType.ANY 
+                    		|| componentDefinition.getInputMessageType() == MessageType.MODEL 
+                    		|| componentDefinition.getInputMessageType() == MessageType.RELATIONAL) {
+                        models.addAll(configurationService.findRelationalModelsInProject(projectVersionDependency.getTargetProjectVersionId()));
+                    }
+                    if (componentDefinition.getInputMessageType() == MessageType.ANY 
+                    		|| componentDefinition.getInputMessageType() == MessageType.MODEL 
+                    		|| componentDefinition.getInputMessageType() == MessageType.HIERARCHICAL) { 
+                        models.addAll(configurationService.findHierarchicalModelsInProject(projectVersionDependency.getTargetProjectVersionId()));
+                    }
+                }
+
+                if (models != null) {
+                	combo.setItems(models);
+                    for (AbstractName model : models) {
+                        if (isNotBlank(component.getInputModelId()) && component.getInputModelId().equals(model.getId())) {
+                            combo.setValue(model);
+                        }
+                    }
+                }
+                combo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<AbstractName>>() {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public void valueChanged(ValueChangeEvent<AbstractName> event) {
+                        AbstractName model = combo.getValue();
+                        if (model != null) {
+                            component.setInputModelId(model.getId());
+                            component.setInputModel(configurationService.findRelationalModel(model.getId()));
+                        } else {
+                            component.setInputModel(null);
+                            component.setInputModelId(null);
+                        }
+                        if (componentDefinition.isInputOutputModelsMatch()) {
+                            component.setOutputModel(component.getInputModel());
+                            component.setOutputModelId(component.getInputModelId());
+                        }
+                        configurationService.save((AbstractObject) component);
+                        setSource(value);
+                    }
+                });
+                combo.setReadOnly(readOnly);
+                formLayout.addFormItem(combo, "Input Model");
+            }
+        }
+    }
+
+    protected void addResourceCombo(XMLComponentDefinition componentDefintion, FormLayout formLayout, final Component component) {
+        if (componentDefintion == null) {
+            log.error("Could not find a component defintion for: " + component.getName() + " " + component.getType());
+        } else {
+            IConfigurationService configurationService = context.getConfigurationService();
+            FlowStep step = getSingleFlowStep();
+            if (componentDefintion.getResourceCategory() != null && componentDefintion.getResourceCategory() != ResourceCategory.NONE
+                    && step != null) {
+                final ComboBox<Resource> resourcesCombo = new ComboBox<Resource>();
+                resourcesCombo.setWidthFull();
+                String projectVersionId = step.getComponent().getProjectVersionId();
+                Set<XMLResourceDefinition> types = context.getDefinitionFactory().getResourceDefinitions(projectVersionId,
+                        componentDefintion.getResourceCategory());
+                if (types != null) {
+                    String[] typeStrings = new String[types.size()];
+                    int i = 0;
+                    for (XMLResourceDefinition type : types) {
+                        typeStrings[i++] = type.getId();
+                    }
+                    List<Resource> resources = new ArrayList<>(configurationService.findResourcesByTypes(projectVersionId, true, typeStrings));
+                    if (resources != null) {
+                    	resourcesCombo.setItems(resources);
+
+                        resourcesCombo.setValue(component.getResource());
+                    }
+                }
+                resourcesCombo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<Resource>>() {
+                    private static final long serialVersionUID = 1L;
+
+                    @Override
+                    public void valueChanged(ValueChangeEvent<Resource> event) {
+                        component.setResource(resourcesCombo.getValue());
+                        context.getConfigurationService().save(component);
+                    }
+                });
+
+                formLayout.addFormItem(resourcesCombo, "Resource");
+            }
+        }
+    }
+
+    protected List<XMLSetting> buildSettings(Object obj) {
+        if (obj instanceof Component) {
+            Component component = (Component) obj;
+            XMLComponentDefinition definition = context.getDefinitionFactory().getComponentDefinition(component.getProjectVersionId(),
+                    component.getType());
+            return definition.getSettings().getSetting();
+        } else if (obj instanceof Resource) {
+            Resource resource = (Resource) obj;
+            XMLResourceDefinition definition = context.getDefinitionFactory().getResourceDefintion(resource.getProjectVersionId(),
+                    resource.getType());         
+            if (definition != null) {
+                return definition.getSettings() != null ? definition.getSettings().getSetting() : Collections.emptyList();
+            } else {
+                throw new IllegalStateException(String.format("Could not find a resource of type: %s", resource.getType()));
+            }
+        } else {
+            return Collections.emptyList();
+        }
+    }
+
+    protected void addSettingField(final XMLSetting definition, final AbstractObjectWithSettings obj, FormLayout formLayout) {
+        boolean required = definition.isRequired();
+        if (definition.isVisible()) {
+            Component component = null;
+            if (obj instanceof Component) {
+                component = (Component) obj;
+            }
+            String description = definition.getDescription();
+            Type type = definition.getType();
+            FlowStep step = null;
+            switch (type) {
+                case BOOLEAN:
+                    final Checkbox checkbox = new Checkbox(definition.getName());
+                    boolean defaultValue = false;
+                    if (isNotBlank(definition.getDefaultValue())) {
+                        defaultValue = Boolean.parseBoolean(definition.getDefaultValue());
+                    }
+                    checkbox.setValue(obj.getBoolean(definition.getId(), defaultValue));
+                    checkbox.setRequiredIndicatorVisible(required);
+                    checkbox.getElement().setProperty("title", description);
+
+                    checkbox.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<Boolean>>() {
+
+                        private static final long serialVersionUID = 1L;
+
+                        @Override
+                        public void valueChanged(ValueChangeEvent<Boolean> event) {
+                            saveSetting(definition.getId(), checkbox.getValue().toString(), obj);
+                            if (listener != null) {
+                                List<Component> components = new ArrayList<Component>(1);
+                                components.add((Component) obj);
+                                listener.componentChanged(components);
+                            }
+                        }
+                    });
+                    checkbox.setReadOnly(readOnly);
+                    formLayout.addFormItem(checkbox, "");
+                    break;
+                case CHOICE:
+                    final ComboBox<String> choice = new ComboBox<String>();
+                    choice.setWidthFull();
+                    List<String> choices = definition.getChoices() != null ? definition.getChoices().getChoice() : new ArrayList<String>(0);
+                    choice.setItems(choices);
+                    choice.setValue(obj.get(definition.getId(), definition.getDefaultValue()));
+                    choice.getElement().setProperty("title", description);
+                    choice.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<String>>() {
+
+                        private static final long serialVersionUID = 1L;
+
+                        @Override
+                        public void valueChanged(ValueChangeEvent<String> event) {
+                            if (event.getValue() != null) {
+                                saveSetting(definition.getId(), choice.getValue(), obj);
+                            } else {
+                                choice.setValue(event.getOldValue());
+                            }
+                        }
+                    });
+                    choice.setReadOnly(readOnly);
+                    formLayout.addFormItem(choice, definition.getName());
+                    break;
+                case PASSWORD:
+                    
+                    ImmediateUpdateTogglePasswordField passwordField = new ImmediateUpdateTogglePasswordField() {
+                        protected void save(String text) {
+                            if (!DUMMY_PASSWORD.equals(text)) {
+                                saveSetting(definition.getId(), text, obj);
+                            }
+                        }
+                    };
+                    passwordField.setWidthFull();
+                    
+                    boolean allowToggle = context.userHasPrivilege(Privilege.PASSWORD);
+                    passwordField.setToggleAllowed(allowToggle);
+                    
+                    boolean isPasswordSet = isNotBlank(obj.get(definition.getId()));
+                    if (isPasswordSet) {
+                        if (allowToggle) {
+                            passwordField.setValue(obj.get(definition.getId()));
+                        } else {
+                            passwordField.setValue(DUMMY_PASSWORD);
+                        }
+                    }
+                    
+                    passwordField.setRequiredIndicatorVisible(required);
+                    if (description != null) {
+                        passwordField.getElement().setProperty("title", description);
+                    }
+                    passwordField.setReadOnly(readOnly);
+                    formLayout.addFormItem(passwordField, definition.getName());
+                    break;
+                case INTEGER:
+                    TextField integerField = new TextField();
+                    integerField.setWidthFull();
+                    integerField.setValueChangeMode(ValueChangeMode.LAZY);
+                    integerField.setValueChangeTimeout(200);
+                    integerField.addValueChangeListener(event -> saveSetting(definition.getId(), event.getValue(), obj));
+                    new Binder<String>().forField(integerField).withConverter(new StringToIntegerConverter("Value must be an integer"))
+                            .bind(value -> Integer.parseInt(value), (value, newValue) -> value = String.valueOf(newValue));
+                    String integerFieldValue = obj.get(definition.getId(), definition.getDefaultValue());
+                    integerField.setValue(integerFieldValue != null ? integerFieldValue : "");
+                    integerField.setRequiredIndicatorVisible(required);
+                    integerField.getElement().setProperty("title", description);
+                    integerField.setReadOnly(readOnly);
+                    formLayout.addFormItem(integerField, definition.getName());
+                    break;
+                case TEXT:
+                    TextField textField = new TextField();
+                    textField.setWidthFull();
+                    textField.setValueChangeMode(ValueChangeMode.LAZY);
+                    textField.setValueChangeTimeout(200);
+                    textField.addValueChangeListener(event -> saveSetting(definition.getId(), event.getValue(), obj));
+                    String fieldValue = obj.get(definition.getId(), definition.getDefaultValue());
+                    textField.setValue(fieldValue != null ? fieldValue : "");
+                    textField.setRequiredIndicatorVisible(required);
+                    textField.getElement().setProperty("title", description);
+                    textField.setReadOnly(readOnly);
+                    formLayout.addFormItem(textField, definition.getName());
+                    break;
+                case SOURCE_STEP:
+                    step = getSingleFlowStep();
+                    if (step != null) {
+                        Flow flow = context.getConfigurationService().findFlow(step.getFlowId());
+                        final ComboBox<FlowStep> sourceStepsCombo = new ComboBox<FlowStep>();
+                        sourceStepsCombo.setWidthFull();
+
+                        FlowStep currentValue = null;
+                        List<FlowStep> sourceStepList = new ArrayList<FlowStep>();
+                        List<FlowStepLink> sourceSteps = flow.findFlowStepLinksWithTarget(step.getId());
+                        for (FlowStepLink flowStepLink : sourceSteps) {
+                            FlowStep sourceStep = flow.findFlowStepWithId(flowStepLink.getSourceStepId());
+                            sourceStepList.add(sourceStep);
+                            if (currentValue == null && sourceStep.getId() != null && sourceStep.getId().equals(obj.get(definition.getId()))) {
+                            	currentValue = sourceStep;
+                            }
+                        }
+                        sourceStepsCombo.setItems(sourceStepList);
+                        sourceStepsCombo.setItemLabelGenerator(item -> item.getName());
+                        if (currentValue != null) {
+                        	sourceStepsCombo.setValue(currentValue);
+                        }
+                        sourceStepsCombo.getElement().setProperty("title", description);
+                        sourceStepsCombo.setRequiredIndicatorVisible(definition.isRequired());
+                        sourceStepsCombo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<FlowStep>>() {
+
+                            private static final long serialVersionUID = 1L;
+
+                            @Override
+                            public void valueChanged(ValueChangeEvent<FlowStep> event) {
+                                if (event.getValue() != null) {
+                                    saveSetting(definition.getId(), sourceStepsCombo.getValue().getId(), obj);
+                                } else {
+                                    sourceStepsCombo.setValue(event.getOldValue());
+                                }
+                            }
+                        });
+                        sourceStepsCombo.setReadOnly(readOnly);
+                        formLayout.addFormItem(sourceStepsCombo, definition.getName());
+                    }
+                    break;
+                case FLOW:
+                    step = getSingleFlowStep();
+                    if (step != null) {
+                        String projectVersionId = step.getComponent().getProjectVersionId();
+                        FlowName currentValue = null;
+                        List<FlowName> nameList = new ArrayList<FlowName>();
+                        List<FlowName> flows = context.getConfigurationService().findFlowsInProject(projectVersionId, false);
+                        final ComboBox<FlowName> combo = new ComboBox<FlowName>();
+                        combo.setWidthFull();
+                        for (FlowName name : flows) {
+                            if (!step.getFlowId().equals(name.getId())) {
+                                nameList.add(name);
+                                if (currentValue == null && name.getId() != null && name.getId().equals(obj.get(definition.getId()))) {
+                                	currentValue = name;
+                                }
+                            }
+                        }
+                        combo.setItems(nameList);
+                        combo.setItemLabelGenerator(item -> item.getName());
+                        if (currentValue != null) {
+                        	combo.setValue(currentValue);
+                        }
+                        combo.getElement().setProperty("title", description);
+                        combo.setRequiredIndicatorVisible(definition.isRequired());
+                        combo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<FlowName>>() {
+
+                            private static final long serialVersionUID = 1L;
+
+                            @Override
+                            public void valueChanged(ValueChangeEvent<FlowName> event) {
+                                if (event.getValue() != null) {
+                                    saveSetting(definition.getId(), combo.getValue().getId(), obj);
+                                } else {
+                                    combo.setValue(event.getOldValue());
+                                }
+                            }
+                        });
+                        combo.setReadOnly(readOnly);
+                        formLayout.addFormItem(combo, definition.getName());
+                    }
+                    break;
+                case STREAMABLE_RESOURCE:
+                    formLayout.addFormItem(createResourceCombo(definition, obj, ResourceCategory.STREAMABLE), definition.getName());
+                    break;
+                case DATASOURCE_RESOURCE:
+                    formLayout.addFormItem(createResourceCombo(definition, obj, ResourceCategory.DATASOURCE), definition.getName());
+                    break;
+                case MODEL_COLUMN:
+                    if (component != null) {
+                        final ComboBox<ModelAttrib> modelColumnCombo = new ComboBox<ModelAttrib>();     
+                        modelColumnCombo.setWidthFull();
+                        ModelAttrib currentValue = null;
+                        if (component.getInputModel() instanceof RelationalModel) {
+                            List<ModelEntity> entities = new ArrayList<ModelEntity>();
+                            RelationalModel model = (RelationalModel) component.getInputModel();
+                            if (model != null) {
+                                model.sortAttributes();
+                                entities.addAll(model.getModelEntities());
+                            }
+                            model = (RelationalModel) component.getOutputModel();
+                            if (model != null) {
+                                model.sortAttributes();
+                                entities.addAll(model.getModelEntities());
+                            }
+                            AbstractObjectNameBasedSorter.sort(entities);
+    
+                            
+                            List<ModelAttrib> attributeList = new ArrayList<ModelAttrib>();
+                            Map<String, String> attributeToEntityMap = new HashMap<String, String>();
+                            for (ModelEntity modelEntity : entities) {
+                                for (ModelAttrib attribute : modelEntity.getModelAttributes()) {
+                                    attributeList.add(attribute);
+                                    attributeToEntityMap.put(attribute.getId(), modelEntity.getName());
+									if (currentValue == null && attribute.getId() != null
+											&& attribute.getId().equals(obj.get(definition.getId()))) {
+                                    	currentValue = attribute;
+                                    }
+                                }
+                            }
+                            modelColumnCombo.setItems(attributeList);
+                            modelColumnCombo.setItemLabelGenerator(item -> attributeToEntityMap.get(item.getId()) + "." + item.getName());
+                        } else {
+                            //TODO: HIERARCHICAL MODEL
+                        }
+                        if (currentValue != null) {
+                            modelColumnCombo.setValue(currentValue);
+                        }
+                        modelColumnCombo.getElement().setProperty("title", description);
+                        modelColumnCombo.setRequiredIndicatorVisible(definition.isRequired());
+                        modelColumnCombo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<ModelAttrib>>() {
+
+                            private static final long serialVersionUID = 1L;
+
+                            @Override
+                            public void valueChanged(ValueChangeEvent<ModelAttrib> event) {
+                                if (definition.isRequired() || event.getValue() != null) {
+                                    ModelAttrib value = modelColumnCombo.getValue();
+                                    saveSetting(definition.getId(), value != null ? value.getId() : null, obj);
+                                } else {
+                                    modelColumnCombo.setValue(event.getOldValue());
+                                }
+                            }
+                        });
+                        modelColumnCombo.setReadOnly(readOnly);
+                        formLayout.addFormItem(modelColumnCombo, definition.getName());
+                    }
+                    break;
+                case SCRIPT:
+                    final AceEditor editor = new AceEditor();
+                    editor.setMode(AceMode.java);
+                    editor.setHeight("10em");
+                    editor.setWidthFull();
+                    editor.setShowGutter(false);
+                    editor.setShowPrintMargin(false);
+                    editor.setValue(obj.get(definition.getId(), definition.getDefaultValue()));
+                    editor.addValueChangeListener(new ComponentEventListener<AceValueChanged>() {
+                        @Override
+                        public void onComponentEvent(AceValueChanged event) {
+                            Setting data = obj.findSetting(definition.getId());
+                            data.setValue(event.getValue());
+                            context.getConfigurationService().save(data);
+                        }
+                    });
+                    editor.setReadOnly(readOnly);
+                    formLayout.addFormItem(editor, definition.getName());
+                    break;
+                case MULTILINE_TEXT:
+                case XML:
+                    TextArea area = new TextArea();
+                    area.setValueChangeMode(ValueChangeMode.LAZY);
+                    area.setValueChangeTimeout(200);
+                    area.addValueChangeListener(event -> saveSetting(definition.getId(), event.getValue(), obj));
+                    String areaValue = obj.get(definition.getId(), definition.getDefaultValue());
+                    area.setValue(areaValue != null ? areaValue : "");
+                    area.setHeight("143px");
+                    area.setWidthFull();
+                    area.setRequiredIndicatorVisible(required);
+                    area.getElement().setProperty("title", description);
+                    area.setReadOnly(readOnly);
+                    formLayout.addFormItem(area, definition.getName());
+                    break;
+                case TARGET_STEP:
+                    step = getSingleFlowStep();
+                    if (step != null) {
+                        Flow flow = context.getConfigurationService().findFlow(step.getFlowId());
+                        final ComboBox<FlowStep> targetStepsCombo = new ComboBox<FlowStep>();
+                        targetStepsCombo.setWidthFull();
+
+                        FlowStep currentValue = null;
+                        List<FlowStep> targetStepList = new ArrayList<FlowStep>();
+                        List<FlowStepLink> targetSteps = flow.findFlowStepLinksWithSource(step.getId());
+                        for (FlowStepLink flowStepLink : targetSteps) {
+                            FlowStep targetStep = flow.findFlowStepWithId(flowStepLink.getTargetStepId());
+                            targetStepList.add(targetStep);
+							if (currentValue == null && targetStep.getId() != null
+									&& targetStep.getId().equals(obj.get(definition.getId()))) {
+                            	currentValue = targetStep;
+                            }
+                        }
+                        targetStepsCombo.setItemLabelGenerator(item -> item.getName());
+                        targetStepsCombo.setItems(targetStepList);
+                        if (currentValue != null) {
+                        	targetStepsCombo.setValue(currentValue);
+                        }
+                        targetStepsCombo.getElement().setProperty("title", description);
+                        targetStepsCombo.setRequiredIndicatorVisible(definition.isRequired());
+                        targetStepsCombo.addValueChangeListener(new ValueChangeListener<ValueChangeEvent<FlowStep>>() {
+
+                            private static final long serialVersionUID = 1L;
+
+                            @Override
+                            public void valueChanged(ValueChangeEvent<FlowStep> event) {
+                            	FlowStep value = targetStepsCombo.getValue();
+                                saveSetting(definition.getId(), value != null ? value.getId() : null, obj);
+                            }
+                        });
+                        targetStepsCombo.setReadOnly(readOnly);
+                        formLayout.addFormItem(targetStepsCombo, definition.getName());
+                    }
+                    break;
+                case CLOUD_BUCKET:
+                    formLayout.addFormItem(createResourceCombo(definition, obj, ResourceCategory.CLOUD_BUCKET),
+                            definition.getName());
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    protected ComboBox<Resource> createResourceCombo(XMLSetting definition,
+            AbstractObjectWithSettings obj, ResourceCategory category) {
+        IConfigurationService configurationService = context.getConfigurationService();
+        FlowStep step = getSingleFlowStep();
+        String projectVersionId = step.getComponent().getProjectVersionId();
+        final ComboBox<Resource> combo = new ComboBox<Resource>();
+        combo.setWidthFull();
+        combo.getElement().setProperty("title", definition.getDescription());
+        combo.setRequiredIndicatorVisible(definition.isRequired());
+        Set<XMLResourceDefinition> types = context.getDefinitionFactory()
+                .getResourceDefinitions(projectVersionId, category);
+        if (types != null) {
+            String[] typeStrings = new String[types.size()];
+            int i = 0;
+            for (XMLResourceDefinition type : types) {
+                typeStrings[i++] = type.getId();
+            }
+            List<Resource> resources = 
+                    configurationService.findResourcesByTypes(projectVersionId, true, typeStrings);
+
+            if (resources != null) {
+            	Resource currentValue = null;
+                for (Resource resource : resources) {
+                    if (resource.getId() != null && resource.getId().equals(obj.get(definition.getId()))) {
+                    	currentValue = resource;
+                    	break;
+                    }
+                }
+
+                combo.setItems(resources);
+                combo.setValue(currentValue);
+            }
+        }
+        combo.setItemLabelGenerator(item -> item.getName());
+		combo.addValueChangeListener(event -> {
+		    if (event.getValue() != null) {
+		        saveSetting(definition.getId(), combo.getValue().getId(), obj);
+		    } else {
+		        combo.setValue(event.getOldValue());
+		    }
+		});
+        combo.setReadOnly(readOnly);
+        return combo;
+    }
+
+    protected void saveSetting(String key, String text, AbstractObjectWithSettings obj) {
+        Setting data = obj.findSetting(key);
+        data.setValue(text);
+        context.getConfigurationService().save(data);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected FlowStep getSingleFlowStep() {
+        FlowStep step = null;
+        if (value instanceof List<?>) {
+            List<Object> l = (List<Object>) value;
+            if (l.size() == 1) {
+                if (l.get(0) instanceof FlowStep) {
+                    step = (FlowStep) l.get(0);
+                }
+            }
+        }
+        return step;
+    }
+
+}

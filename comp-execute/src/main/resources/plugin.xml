@@ -1,0 +1,70 @@
+<!--
+
+    Licensed to JumpMind Inc under one or more contributor
+    license agreements.  See the NOTICE file distributed
+    with this work for additional information regarding
+    copyright ownership.  JumpMind Inc licenses this file
+    to you under the GNU General Public License, version 3.0 (GPLv3)
+    (the "License"); you may not use this file except in compliance
+    with the License.
+
+    You should have received a copy of the GNU General Public License,
+    version 3.0 (GPLv3) along with this library; if not, see
+    <http://www.gnu.org/licenses/>.
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+
+-->
+<definitions>
+  <component category='PROCESSOR'
+             id='Execute'
+             inputMessageType='any'
+             inputOutputModelsMatch='false'
+             outputMessageType='text'
+             resourceCategory='none'>
+    <name>Execute</name>
+    <className>org.jumpmind.metl.core.runtime.component.Execute</className>
+    <keywords>launch,process</keywords>
+    <description></description>
+    <settings>
+      <setting id='run.when'
+               required='false'
+               type='choice'>
+        <name>Run When</name>
+        <defaultValue>PER UNIT OF WORK</defaultValue>
+        <choices>
+          <choice>PER UNIT OF WORK</choice>
+          <choice>PER MESSAGE</choice>
+        </choices>
+      </setting>
+      <setting id='command'
+               required='true'
+               type='text'>
+        <name>Command</name>
+      </setting>
+      <setting id='continue.on.error'
+               required='false'
+               type='boolean'>
+        <name>Continue On Error</name>
+        <defaultValue>false</defaultValue>
+      </setting>
+      <setting id='success.code'
+               required='false'
+               type='integer'>
+        <name>Success Code</name>
+        <defaultValue>0</defaultValue>
+      </setting>
+      <setting id='parameter.replacement'
+               required='false'
+               type='boolean'>
+        <name>Parameter replacement</name>
+        <defaultValue>false</defaultValue>
+      </setting>      
+    </settings>
+  </component>
+</definitions>

@@ -1,0 +1,87 @@
+plugins {
+    id 'com.vaadin'
+    id 'war'
+}
+
+vaadin {
+	productionMode = true
+	optimizeBundle = false
+}
+
+apply from: '../metl-assemble/common.gradle'
+
+configurations {
+    executableWar
+}
+
+eclipse {
+    wtp {
+        component {
+            sourceDirs += file('src/test/resources')
+        }
+    }
+}
+
+war {
+	dependsOn 'copyJavaDocsToWebapp'
+    archiveFileName="metl.war"
+    jar.enabled = true
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    from {
+        configurations.executableWar.collect {
+            it.isDirectory() ? it : project.zipTree(it)
+        }
+    }
+    {
+        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
+    }    
+    from ('build') { include 'plugins.zip' }
+    manifest { attributes 'Main-Class': 'org.jumpmind.metl.Metl' }
+}    
+
+dependencies {
+    api project(":metl-ui")
+    executableWar project(":metl-server")    
+}
+
+task copyJavaDocsToWebapp(type: Copy) {    
+    dependsOn javadoc
+    dependsOn ':metl-core:javadoc'
+    dependsOn ':metl-ui:javadoc'
+    duplicatesStrategy='warn'
+    destinationDir = file("src/main/webapp/doc")
+    into('javadoc') {
+        from ('../metl-core/build/docs/javadoc') { include '**/*' }
+        from ('../metl-ui/build/docs/javadoc') { include '**/*' }
+    }    
+}
+
+task copyPluginsForDevelopment (type:Copy) {
+   rootProject.allprojects.findAll { it.name.startsWith('comp') || it.name.startsWith('resource') }.each {
+       dependsOn ":$it.name:publishMavenJavaPublicationToMavenRepository"
+   }
+    
+   from ('build/plugins')
+   destinationDir file('../metl-develop/working/plugins')
+   rename 'maven-metadata.xml(.*)', 'maven-metadata-local.xml$1'
+}
+
+task zipPlugins (type:Zip) {
+    rootProject.allprojects.findAll { it.name.startsWith('comp') || it.name.startsWith('resource') }.each {
+        dependsOn ":$it.name:publishMavenJavaPublicationToMavenRepository"
+    }
+    
+    from ('build/plugins')
+    destinationDirectory = file('build') 
+    rename 'maven-metadata.xml(.*)', 'maven-metadata-local.xml$1'
+    archiveFileName = 'plugins.zip'
+}
+
+
+develop.dependsOn tasks.getByPath(':metl-war:vaadinPrepareFrontend')
+develop.dependsOn copyJavaDocsToWebapp
+assemble.dependsOn copyJavaDocsToWebapp
+develop.dependsOn copyPluginsForDevelopment
+war.dependsOn zipPlugins
+war.dependsOn tasks.getByPath(':metl-server:jar')
+assemble.dependsOn(jar)

@@ -1,0 +1,23 @@
+/bin
+/.classpath
+/.project
+/.settings
+/build
+.DS_Store
+/*.iml
+/src/main/webapp/
+/test_codb.h2.db
+/test_codb.lock.db
+/test_codb.trace.db
+/test_vertex_rte.h2.db
+/test_vertex_rte.lock.db
+/working/
+/node_modules/
+/frontend/generated/
+/webpack.generated.js
+/vite.generated.ts
+/types.d.ts
+/tsconfig.json
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*

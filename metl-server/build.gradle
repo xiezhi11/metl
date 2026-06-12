@@ -1,0 +1,27 @@
+apply from: '../metl-assemble/common.gradle'
+
+dependencies {
+    api "jakarta.servlet:jakarta.servlet-api:$servletVersion"
+    api "jakarta.servlet.jsp:jakarta.servlet.jsp-api:$jspVersion"
+    api "jakarta.websocket:jakarta.websocket-api:$webSocketVersion"
+    api "org.eclipse.jetty.ee10:jetty-ee10-webapp:$jettyVersion"
+    api "org.eclipse.jetty:jetty-jmx:$jettyVersion"
+    api "org.eclipse.jetty.ee10:jetty-ee10-annotations:$jettyVersion"
+    api "org.eclipse.jetty.ee10.websocket:jetty-ee10-websocket-jakarta-server:$jettyVersion"    
+    api ("org.springframework.boot:spring-boot-starter-web:${springBootVersion}") {
+        exclude module: "spring-boot-starter-tomcat"
+        exclude module: "spring-boot-starter-logging"
+    }
+    api ("org.springframework.boot:spring-boot-starter-jetty:${springBootVersion}"){
+        exclude module: "spring-boot-starter-logging"
+        exclude module: "tomcat-embed-el"
+    }
+    api "commons-io:commons-io:$commonsIoVersion"
+    api "org.apache.commons:commons-lang3:$commonsLangVersion"
+    api (group:"org.jumpmind.symmetric", name:"symmetric-wrapper", version:"$symmetricVersion", changing:true) {
+        exclude group:"org.apache.logging.log4j"
+        exclude group:"org.slf4j"
+    }
+    api "org.bouncycastle:bcprov-jdk18on:$bouncycastleVersion"
+    api "org.bouncycastle:bcpkix-jdk18on:$bouncycastleVersion"
+}

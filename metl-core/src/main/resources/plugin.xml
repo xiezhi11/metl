@@ -1,0 +1,207 @@
+<!--
+
+    Licensed to JumpMind Inc under one or more contributor
+    license agreements.  See the NOTICE file distributed
+    with this work for additional information regarding
+    copyright ownership.  JumpMind Inc licenses this file
+    to you under the GNU General Public License, version 3.0 (GPLv3)
+    (the "License"); you may not use this file except in compliance
+    with the License.
+
+    You should have received a copy of the GNU General Public License,
+    version 3.0 (GPLv3) along with this library; if not, see
+    <http://www.gnu.org/licenses/>.
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+
+-->
+<definitions>
+  <component category='PROCESSOR'
+             id='Call Flow'
+             inputMessageType='any'
+             outputMessageType='any'
+             resourceCategory='none'>
+    <name>Embed Flow</name>
+    <className>org.jumpmind.metl.core.runtime.component.EmbedFlow</className>
+    <keywords>subflow,execute,embed</keywords>
+    <flowManipulatorClassName>org.jumpmind.metl.core.runtime.component.EmbedFlowFlowManipulator</flowManipulatorClassName>
+    <settings>
+      <setting id='flow.id'
+               required='true'
+               type='flow'>
+        <name>Flow</name>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Deduper'
+             inputMessageType='relational'
+             inputOutputModelsMatch='true'
+             outputMessageType='relational'
+             resourceCategory='none'>
+    <name>Deduper</name>
+    <className>org.jumpmind.metl.core.runtime.component.Deduper</className>
+    <keywords>unique</keywords>
+    <description></description>
+    <settings>
+      <setting id='dedupe.type'
+               required='true'
+               type='choice'>
+        <name>Dedupe Type</name>
+        <defaultValue>ENTITY</defaultValue>
+        <choices>
+          <choice>ENTITY</choice>
+          <choice>ATTRIBUTE</choice>
+        </choices>
+      </setting>
+      <setting id='preserve.record'
+               required='false'
+               type='choice'>
+        <name>Preserve Record</name>
+        <defaultValue>First Record</defaultValue>
+        <choices>
+          <choice>First Record</choice>
+          <choice>Last Record</choice>
+        </choices>
+      </setting>
+      <setting id='rows.per.message'
+               required='false'
+               type='integer'>
+        <name>Rows/Msg</name>
+        <defaultValue>1000</defaultValue>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Merger'
+             inputMessageType='relational'
+             inputOutputModelsMatch='true'
+             outputMessageType='relational'
+             resourceCategory='none'>
+    <name>Merger</name>
+    <className>org.jumpmind.metl.core.runtime.component.Merger</className>
+    <keywords>merge,join</keywords>
+    <description></description>
+    <settings>
+      <setting id='rows.per.message'
+               required='false'
+               type='integer'>
+        <name>Rows/Msg</name>
+        <defaultValue>1000</defaultValue>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Lookup'
+             inputMessageType='any'
+             inputOutputModelsMatch='true'
+             showInputModel='true'
+             outputMessageType='relational'
+             resourceCategory='none'
+             shareable='false'>
+    <name>Lookup</name>
+    <className>org.jumpmind.metl.core.runtime.component.Lookup</className>
+    <keywords>find,enhance</keywords>
+    <description></description>
+    <settings>
+      <setting id='lookup.data.source.step'
+               required='true'
+               type='source_step'>
+        <name>Lookup Data Source</name>
+      </setting>
+      <setting id='lookup.key.attribute'
+               required='true'
+               type='model_column'>
+        <name>Lookup Key Attribute</name>
+      </setting>
+      <setting id='lookup.value.attribute'
+               required='true'
+               type='model_column'>
+        <name>Lookup Value Attribute</name>
+      </setting>
+      <setting id='replacement.key.attribute'
+               required='true'
+               type='model_column'>
+        <name>Replacement Key Attribute</name>
+      </setting>
+      <setting id='replacement.value.attribute'
+               required='true'
+               type='model_column'>
+        <name>Replacement Value Attribute</name>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Message Logger'
+             inputMessageType='any'
+             showInputModel='true'             
+             inputOutputModelsMatch='true'
+             outputMessageType='any'
+             resourceCategory='none'>
+    <name>Message Logger</name>
+    <className>org.jumpmind.metl.core.runtime.component.MessageLogger</className>
+    <keywords>log</keywords>
+    <description></description>
+    <settings>
+      <setting id='qualify.with.entity.name'
+               required='false'
+               type='boolean'>
+        <name>Qualify Entity Attributes with Entity Name</name>
+        <defaultValue>false</defaultValue>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Multiplier'
+             inputMessageType='relational'
+             inputOutputModelsMatch='true'
+             outputMessageType='relational'
+             resourceCategory='none'
+             shareable='false'>
+    <name>Multiplier</name>
+    <className>org.jumpmind.metl.core.runtime.component.Multiplier</className>
+    <keywords>generate,multiply</keywords>
+    <description></description>
+    <settings>
+      <setting id='multiplier.source.step'
+               required='true'
+               type='source_step'>
+        <name>Multiplier Source</name>
+      </setting>
+      <setting id='rows.per.message'
+               required='false'
+               type='integer'>
+        <name>Rows/Msg</name>
+        <defaultValue>1000</defaultValue>
+      </setting>
+    </settings>
+  </component>
+  <component category='PROCESSOR'
+             id='No Op'
+             inputMessageType='any'
+             inputOutputModelsMatch='false'
+             outputMessageType='any'
+             resourceCategory='none'
+             supportsMultipleThreads='true'>
+    <name>No Op</name>
+    <className>org.jumpmind.metl.core.runtime.component.NoOp</className>
+    <keywords>nothing,noop</keywords>
+    <description></description>
+    <settings></settings>
+  </component>
+  <component category='PROCESSOR'
+             id='Union'
+             inputMessageType='relational'
+             inputOutputModelsMatch='true'
+             outputMessageType='relational'
+             resourceCategory='none'>
+    <name>Union</name>
+    <className>org.jumpmind.metl.core.runtime.component.Union</className>
+    <description></description>
+  </component>  
+</definitions>

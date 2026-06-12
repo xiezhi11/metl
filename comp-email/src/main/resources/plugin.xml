@@ -1,0 +1,184 @@
+<!--
+
+    Licensed to JumpMind Inc under one or more contributor
+    license agreements.  See the NOTICE file distributed
+    with this work for additional information regarding
+    copyright ownership.  JumpMind Inc licenses this file
+    to you under the GNU General Public License, version 3.0 (GPLv3)
+    (the "License"); you may not use this file except in compliance
+    with the License.
+
+    You should have received a copy of the GNU General Public License,
+    version 3.0 (GPLv3) along with this library; if not, see
+    <http://www.gnu.org/licenses/>.
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+
+-->
+<definitions>
+  <component category='Writer'
+             id='35c4c0ae-b040-4f93-b212-5b92619c4064'
+             inputMessageType='any'
+             showInputModel='true'
+             inputOutputModelsMatch='false'
+             outputMessageType='any'
+             resourceCategory='mailsession'>
+    <name>Email Writer</name>
+    <keywords>send,email,smtp,write</keywords>
+    <className>org.jumpmind.metl.core.runtime.component.EmailWriter</className>
+    <description></description>
+    <settings>    
+      <setting id='subject'
+               required='true'
+               type='text'>
+        <name>Subject</name>
+      </setting>
+      <setting id='body'
+               required='true'
+               type='multiline_text'>
+        <name>Body</name>
+      </setting>
+      <setting id='from.line'
+               required='true'
+               type='text'>
+        <name>From:</name>
+      </setting>      
+      <setting id='to.line'
+               required='false'
+               type='text'>
+        <name>To:</name>
+      </setting>
+      <setting id='cc.line'
+               required='false'
+               type='text'>
+        <name>CC:</name>
+      </setting>
+      <setting id='bcc.line'
+               required='false'
+               type='text'>
+        <name>BCC:</name>
+      </setting>
+      <setting id='body.charset'
+               required='false'
+               type='text'>
+        <name>Character Set:</name>
+      </setting>
+      <setting id='sub.type'
+               required='false'
+               type='text'>
+        <name>MIME Subtype:</name>
+      </setting>
+      <setting id='source.step.email.addresses'
+               required='false'
+               type='source_step'>
+        <name>Source Step For Email Addresses</name>
+      </setting>
+      <setting id='source.step.email.addresses.type'
+               required='false'
+               type='choice'>
+        <name>Source Step Email Addresses Type</name>
+        <defaultValue>TO</defaultValue>
+        <choices>
+          <choice>TO</choice>
+          <choice>CC</choice>
+          <choice>BCC</choice>
+        </choices>
+      </setting>       
+      <setting id='one.email.per.recipient'
+               required='false'
+               type='boolean'>
+        <name>One Email per Recipient</name>
+        <defaultValue>false</defaultValue>
+      </setting>          
+      <setting id='include.attachment'
+               required='false'
+               type='boolean'>
+        <name>Include Attachment</name>
+        <defaultValue>false</defaultValue>
+      </setting>          
+      <setting id='attachment.file.path'
+               required='false'
+               type='text'>
+        <name>Attachment File Full Path</name>
+      </setting>
+      <setting id='run.when'
+               required='false'
+               type='choice'>
+        <name>Run When</name>
+        <defaultValue>PER UNIT OF WORK</defaultValue>
+        <choices>
+          <choice>PER UNIT OF WORK</choice>
+          <choice>PER MESSAGE</choice>
+          <choice>PER ENTITY</choice>
+        </choices>
+      </setting>
+    </settings>
+  </component>
+    <component category='READER'
+             id='Email Reader'
+             inputMessageType='any'
+             showInputModel='false'
+             inputOutputModelsMatch='false'
+             outputMessageType='text'
+             resourceCategory='mailsession'>
+    <name>Email Reader</name>    
+    <keywords>read,email,smtp</keywords>
+    <className>org.jumpmind.metl.core.runtime.component.EmailReader</className>
+    <description></description>
+    <settings>    
+      <setting id='email.source.folder'
+               required='true'
+               type='text'>
+        <name>Email Source Folder</name>
+      </setting>
+      <setting id='email.target.folder'
+               required='false'
+               type='text'>
+        <name>Move Emails To Folder</name>
+      </setting>
+      <setting id='file.attachment.target.path'
+               required='false'
+               type='text'>
+        <name>Path to Save Email Attachments</name>
+      </setting>    
+      <setting id='email.from.search'
+               required='false'
+               type='text'>
+        <name>Email From to Search For</name>
+      </setting>  
+      <setting id='subject.search'
+               required='false'
+               type='text'>
+        <name>Subject to Search For</name>
+      </setting>
+      <setting id='read.only.unread.messages'
+               required='false'
+               type='boolean'>
+        <name>Search Only Un-read Messages</name>
+        <defaultValue>true</defaultValue>
+      </setting>
+      <setting id='mark.all.as.read'
+               required='false'
+               type='boolean'>
+        <name>Mark All Messages as Read</name>
+        <defaultValue>false</defaultValue>
+      </setting>          
+      <setting id='run.when'
+               required='false'
+               type='choice'>
+        <name>Run When</name>
+        <defaultValue>PER UNIT OF WORK</defaultValue>
+        <choices>
+          <choice>PER UNIT OF WORK</choice>
+          <choice>PER MESSAGE</choice>
+          <choice>PER ENTITY</choice>
+        </choices>
+      </setting>
+    </settings>
+  </component>
+</definitions>

@@ -1,0 +1,54 @@
+plugins {
+    id 'com.vaadin'
+}
+
+vaadin {
+	productionMode = true
+	optimizeBundle = false
+}
+
+apply from: '../metl-assemble/common.gradle'
+apply from: '../metl-assemble/asciidoc.gradle'
+
+compileJava {
+    options.compilerArgs += '-parameters'
+}
+
+dependencies {
+    api project(":metl-core")
+    api (group:"org.jumpmind.symmetric", name:"symmetric-sqlexplorer", version:"$symmetricVersion", changing:true) {
+       exclude group:'com.vaadin'
+    }
+    api "org.springframework:spring-webmvc:$springVersion"
+    api "org.apache.poi:poi:$apachePOIVersion"
+    api "org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion"
+    api "io.swagger.core.v3:swagger-annotations-jakarta:$swaggerVersion"
+    api "io.swagger.core.v3:swagger-core-jakarta:$swaggerVersion"
+    api "io.swagger.core.v3:swagger-models-jakarta:$swaggerVersion"
+    api "jakarta.ws.rs:jakarta.ws.rs-api:3.1.0"
+    api "com.predic8:soa-model-core:2.0.1"
+    api ("jlibs:jlibs-xml:1.0") {
+       exclude group:'xerces'
+    }
+    api ("xerces:xercesImpl:2.12.2") {
+       exclude group:'xml-apis'
+    }
+    api "com.vaadin:vaadin-bom:$vaadinVersion"
+    api "com.vaadin:vaadin-core:$vaadinVersion"    
+    api "com.vaadin:vaadin-spring:$vaadinVersion"
+    api "jakarta.servlet:jakarta.servlet-api:$servletVersion"
+    api "org.eclipse.jetty.ee10:jetty-ee10-servlet:$jettyVersion"
+    implementation ("com.vaadin:vaadin-spring-boot-starter:${vaadinVersion}") {
+        exclude module: "spring-boot-starter-tomcat"
+        exclude module: "tomcat-embed-el"
+        exclude group: "org.apache.tomcat.embed"
+        exclude module: "spring-boot-starter-logging"
+    }
+    api "de.f0rce:ace:3.4.2"
+    api "org.vaadin.tatu:twincolselect:3.0.1"
+    api "org.vaadin.addons.tatu:colorpicker:1.4.1"
+    api "org.apache.httpcomponents.core5:httpcore5:5.2.4"
+    api "org.apache.httpcomponents.client5:httpclient5:5.3.1"
+    compileOnly "jakarta.servlet.jsp:jakarta.servlet.jsp-api:$jspVersion"
+    compileOnly "jakarta.websocket:jakarta.websocket-api:$webSocketVersion"     
+}

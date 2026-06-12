@@ -1,0 +1,94 @@
+
+
+apply plugin: 'org.asciidoctor.jvm.convert'
+
+task cleanAsciidocBuildDir {
+    doFirst {
+        delete "$buildDir/../../metl-ui/working/asciidoc"
+        delete "$buildDir/../../metl-web/src/main/webapp/doc/html"
+    }
+}
+
+task copyImages(type: Copy) {
+
+    dependsOn cleanAsciidocBuildDir
+        
+    destinationDir = file("$buildDir/../../metl-ui/working/asciidoc")
+    from ("$buildDir/../../../metl.wiki/") { include "images/**/*" }
+     
+}
+
+
+task copyWiki(type: Copy) {
+
+    dependsOn copyImages
+    
+    destinationDir = file("$buildDir/../../metl-ui/working/asciidoc")
+
+    from ("$buildDir/../../../metl.wiki/") { include "**/*.asciidoc" } 
+    from ("$buildDir/../../metl-ui/src/asciidoc/") 
+    
+    filteringCharset = 'UTF-8'
+    
+    filter { text ->
+      text.findAll(/link:.*]/).each { link ->
+         def ref = link.replace('link:','<<').replace('[',',').replace(']','>>')
+         text = text.replace(link, ref)
+      }
+      return text
+    }
+
+}
+
+task generateDocs(type: Copy) {
+    
+    dependsOn asciidoctor
+    
+    destinationDir = file("$buildDir/../../metl-war/src/main/webapp/doc/html")
+
+    from ("$buildDir/src/asciidoc/html5") { include "user-guide.html" }
+    filter(org.apache.tools.ant.filters.ReplaceTokens, tokens: [
+       'version': version,
+       'buildTime': new java.text.SimpleDateFormat('yyyy-MM-dd HH:mm:ss').format(new java.util.Date()),
+       'scmVersion' : gitVersion
+    ])
+
+}
+
+task publishDoc {
+    dependsOn generateDocs
+    doLast {
+        ant.taskdef(name: 'scp', classname: 'org.apache.tools.ant.taskdefs.optional.ssh.Scp',
+        classpath: configurations.sshAntTask.asPath)
+
+        ant.scp(
+            todir: "$publishUser:$publishPassword@$publishServer:~/www/doc/$majorMinorVersion",
+            trust: 'true',
+            verbose: 'true') {
+            fileset(dir: "$buildDir/../../metl-war/src/main/webapp/doc/html") { include(name: '**/**')
+            }
+        }
+    }
+}
+
+asciidoctor { (1)
+	outputOptions {
+		backends docFormat
+	}
+    sourceDir = file("$buildDir/../../metl-ui/working/asciidoc")
+    outputDir = file("$buildDir/src/asciidoc")
+    options = [
+        doctype: 'book',
+        sourceDocumentNames: [
+            'user-guide.asciidoc'            
+            ]
+    ]    
+    attributes \
+        'source-highlighter':'coderay',
+        'data-uri':'true',
+        'imagesdir': '.',
+        'icons': 'font'
+    baseDirFollowsSourceFile()
+}
+
+asciidoctor.dependsOn copyWiki
